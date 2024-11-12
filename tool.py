@@ -1,5 +1,7 @@
 """
-LLM Web search
+LLM Web Search
+version 0.1.0
+
 Copyright (C) 2024 mamei16
 
 This program is free software: you can redistribute it and/or modify
