@@ -76,10 +76,10 @@ class Tools:
             default="", description="Path to the folder in which embedding models will be saved"
         )
         num_results: int = Field(
-            default=5, description="Number of search engine results to process per query", ge=1
+            default=10, description="Number of search engine results to process per query", ge=1
         )
         max_results: int = Field(
-            default=5, description="Max. number of search results to return per query", ge=1
+            default=8, description="Max. number of search results to return per query", ge=1
         )
         cpu_only: bool = Field(
             default=False, description="Run the tool on CPU only"
