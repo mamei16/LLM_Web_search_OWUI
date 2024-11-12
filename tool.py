@@ -142,19 +142,18 @@ class Tools:
         self.user_valves = self.UserValves()
         self.document_retriever = DocumentRetriever()
 
-    def reuse_existing_web_search_results(self, __user__: dict, __event_emitter__=None):
+    @staticmethod
+    def reuse_existing_web_search_results(__user__: dict, __event_emitter__=None):
         """
         Choose this tool if existing search results from a previous web search can be used to answer the user's query.
         """
-        print("REUSED EXISING RESULTS")
-        # print("REUSE:", prompt)
         return ""
 
-    def no_tool_necessary(self, __user__: dict, __event_emitter__=None):
+    @staticmethod
+    def no_tool_necessary(__user__: dict, __event_emitter__=None):
         """
         Choose this tool if you can answer the user without using any tool.
         """
-        print("NO TOOL NECESSARY")
         return ""
 
     async def search_web(
@@ -163,8 +162,6 @@ class Tools:
         """
         The search tool will search the web and return the results. You must formulate your own search query based on the user's message.
         """
-        print("WEB_SEARCH:", query)
-        print(self.user_valves.simple_search)
         self.document_retriever.update_settings(self.valves)
 
         if self.valves.embedding_model_save_path == "":
