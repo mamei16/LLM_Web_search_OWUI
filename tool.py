@@ -89,7 +89,7 @@ class Tools:
                                      " be split into, in characters", ge=5, le=100000,
         )
         include_citations: bool = Field(
-            default=True, description="Include a citations for each retrieved search result"
+            default=True, description="Include a citation for each retrieved search result"
          )
         ensemble_weighting: float = Field(
             default=0.5, description="Ensemble Weighting. "
