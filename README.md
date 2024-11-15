@@ -8,6 +8,7 @@ This repo contains the source code of the LLM Web Search tool for Open WebUI. Th
   * [Initial Setup](#initial-setup)
   * [Settings (Valves)](#settings-valves)
     + [Ensemble Weighting](#ensemble-weighting)
+  * [Possible Issue with ROCm on Linux](#possible-issue-with-rocm-on-linux)
 
 ## Initial Setup
 
@@ -31,3 +32,10 @@ Most settings are already explained briefly in the UI, and are expanded on in th
 ### Ensemble Weighting 
 
 Set this value to 0 to use keyword retrieval only, or 1 to use purely dense retrieval. If you choose to run the tool on CPU only, I recommend to either use BM25 as the keyword retrieval method or use purely dense retrieval, as the SPLADE document encoder will run slowly on a CPU.
+
+
+## Possible Issue with AMD ROCm on Linux
+
+If you're running both the LLM server (such as Oobabooga's textgen webUI or Ollama) and Open WebUI on the same linux machine, have an AMD GPU and use ROCm, you may encounter freezes/hanging in either the web search itself (being stuck at either the "Downloading and chunking webpages..." or "Retrieving relevant results..." stage) or the LLM response(s) following the web search. 
+
+This is currently an open issue and has so far only been confirmed to occur when using Oobabooga's textgen webUI as the LLM server. You can avoid any issues by using the [llama.ccp server](https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md) directly. 
