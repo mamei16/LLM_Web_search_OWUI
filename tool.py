@@ -198,13 +198,16 @@ class Tools:
 
             if self.valves.include_citations and __event_emitter__:
                 for result_doc in result_docs:
+                    source = result_doc.metadata["source"]
+                    if source != "SearXNG instant answer":
+                        source = urlparse(source).netloc.lstrip("www.")
                     await __event_emitter__(
                         {
                             "type": "citation",
                             "data": {
                                 "document": [result_doc.page_content],
                                 "metadata": [result_doc.metadata],
-                                "source": {"name": urlparse(result_doc.metadata["source"]).netloc},
+                                "source": {"name": source},
                             },
                         }
                     )
