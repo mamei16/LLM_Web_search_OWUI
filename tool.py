@@ -84,6 +84,10 @@ class Tools:
         cpu_only: bool = Field(
             default=False, description="Run the tool on CPU only"
         )
+        simple_search: bool = Field(
+            default=False,
+            description="Use just the website snippets returned by the search engine, instead of processing entire webpages",
+        )
         chunk_size: int = Field(
             default=500, description="Max. chunk size. The maximal size of the individual chunks that each webpage will"
                                      " be split into, in characters", ge=5, le=100000,
@@ -131,15 +135,8 @@ class Tools:
             default="None", description='SearXNG URL. If not equal to "None", searXNG will be used instead of DuckDuckGo',
         )
 
-    class UserValves(BaseModel):
-        simple_search: bool = Field(
-            default=False,
-            description="Use simple search",
-        )
-
     def __init__(self):
         self.valves = self.Valves()
-        self.user_valves = self.UserValves()
         self.document_retriever = DocumentRetriever()
 
     @staticmethod
@@ -179,10 +176,10 @@ class Tools:
                 await self.document_retriever.aload_models(__event_emitter__)
 
             if self.valves.searxng_url != "None":
-                result_docs = await self.document_retriever.aretrieve_from_searxng(query, self.user_valves,
+                result_docs = await self.document_retriever.aretrieve_from_searxng(query, self.valves.simple_search,
                                                                                    __event_emitter__)
             else:
-                result_docs = await self.document_retriever.aretrieve_from_duckduckgo(query, self.user_valves,
+                result_docs = await self.document_retriever.aretrieve_from_duckduckgo(query, self.valves.simple_search,
                                                                                       __event_emitter__)
             source_url_set = list({d.metadata["source"] for d in result_docs})
             if __event_emitter__:
@@ -316,7 +313,7 @@ class DocumentRetriever:
         self.splade_query_model.to(self.device)
 
 
-    async def aretrieve_from_duckduckgo(self, query: str, user_settings: Tools.UserValves, event_emitter):
+    async def aretrieve_from_duckduckgo(self, query: str, simple_search: bool, event_emitter):
         documents = []
         query = query.strip("\"'")
         max_results = self.max_results
@@ -341,7 +338,7 @@ class DocumentRetriever:
                 result_documents.append(result_document)
                 result_urls.append(result["href"])
 
-        if user_settings.simple_search:
+        if simple_search:
             retrieved_docs = await self.aretrieve_from_snippets(query, result_documents, event_emitter)
         else:
             retrieved_docs = await self.aretrieve_from_webpages(query, result_urls, event_emitter)
@@ -354,7 +351,7 @@ class DocumentRetriever:
             return result_documents[:max_results]
         return documents[:max_results]
 
-    async def aretrieve_from_searxng(self, query: str, user_settings: Tools.UserValves, event_emitter):
+    async def aretrieve_from_searxng(self, query: str, simple_search: bool, event_emitter):
         await emit_status(event_emitter, f'Searching SearXNG for "{query}"...', False)
 
         headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
@@ -394,7 +391,7 @@ class DocumentRetriever:
                     result_documents.append(answer_document)
                 pageno += 1
 
-        if user_settings.simple_search:
+        if simple_search:
             retrieved_docs = await self.aretrieve_from_snippets(query, result_documents, event_emitter)
         else:
             retrieved_docs = await self.aretrieve_from_webpages(query, result_urls, event_emitter)
