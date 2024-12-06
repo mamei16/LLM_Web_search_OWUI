@@ -201,6 +201,7 @@ class Tools:
                     source = result_doc.metadata["source"]
                     if source != "SearXNG instant answer":
                         source = urlparse(source).netloc.lstrip("www.")
+                    result_doc.metadata["source"] = source
                     await __event_emitter__(
                         {
                             "type": "citation",
