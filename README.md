@@ -17,12 +17,9 @@ This repo contains the source code of the LLM Web Search tool for Open WebUI. Th
 This tool processes search results locally on device. For this purpose, three embedding models need to be downloaded automatically when the first web search is executed. Before using this tool for the first time, you'll need to configure the "Embedding Model Save Path" setting (or "Valve"), which controls where the embedding models will be downloaded to.
 
 
-### Update DuckDuckGo Search Python Package
+### Set up SearXNG
 
-By default, DuckDuckGo is used as the search engine, and the `duckduckgo-search` python package is used to get results from DuckDuckGo. However, as of this writing, the `open-webui` PyPI package ships with an old version of `duckduckgo-search` (see [here](https://github.com/open-webui/open-webui/blob/main/pyproject.toml#L92)). It is important to keep this package up to date to avoid `202 Ratelimit` exceptions, so before using this tool (and anytime you encounter said exception), you'll need to update `duckduckgo-search`:  
-`pip install --upgrade duckduckgo-search`  
-
-If you choose to use SearXNG as the search engine, you of course won't need to update `duckduckgo-search`.
+Since the `duckduckgo-search` project has been archived and the last working python package of it deleted, this tool will only work with a searXNG instance.
 
 
 ## Settings (Valves)
