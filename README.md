@@ -18,7 +18,7 @@ This tool processes search results locally on device. For this purpose, three em
 
 ### Update DuckDuckGo Search Python Package
 
-By default, DuckDuckGo is used as the search engine, and the `duckduckgo-search` python package is used to get results from DuckDuckGo. However, as of this writing, the `open-webui` PyPI package ships with an old version of `duckduckgo-search` (see [here](https://github.com/open-webui/open-webui/blob/main/pyproject.toml#L92)). It is important to keep this package up to date to avoid `202 Ratelimit` exceptions, so before using this tool, you'll need to update `duckduckgo-search`.   
+By default, DuckDuckGo is used as the search engine, and the `duckduckgo-search` python package is used to get results from DuckDuckGo. However, as of this writing, the `open-webui` PyPI package ships with an old version of `duckduckgo-search` (see [here](https://github.com/open-webui/open-webui/blob/main/pyproject.toml#L97)). It is important to keep this package up to date to avoid `202 Ratelimit` exceptions, so before using this tool, you'll need to update `duckduckgo-search`.   
 Since the official project has [removed](https://github.com/deedy5/duckduckgo_search/pull/268) functionality that this tool relies on, you'll need to install my custom fork:   
 `pip install --upgrade git+https://github.com/mamei16/duckduckgo_search@6.4.2`  
 
