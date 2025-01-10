@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.2.1
+version: 0.2.2
 
 Copyright (C) 2024 mamei16
 
@@ -1084,7 +1084,7 @@ class SpladeRetriever:
             tvecs, _ = torch.max(weighted_log, dim=1)
 
             # extract all non-zero values and their indices from the sparse vectors
-            for batch in tvecs.cpu():
+            for batch in tvecs.cpu().to(torch.float32):
                 indices.append(batch.nonzero(as_tuple=True)[0].numpy())
                 values.append(batch[indices[-1]].numpy())
 
@@ -1107,7 +1107,7 @@ class SpladeRetriever:
         relu_log = torch.log(1 + torch.relu(logits))
         weighted_log = relu_log * attention_mask.unsqueeze(-1)
         max_val, _ = torch.max(weighted_log, dim=1)
-        query_vec = max_val.squeeze().cpu()
+        query_vec = max_val.squeeze().cpu().to(torch.float32)
 
         query_indices = query_vec.nonzero().numpy().flatten()
         query_values = query_vec.detach().numpy()[query_indices]
