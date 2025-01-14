@@ -167,7 +167,7 @@ class Tools:
             error_message = ("Error: Please configure the embedding model save path. "
                              "To solve this issue, go to Workspace-->Tools and click on the gear symbol next to the LLM_Web_search tool. "
                              'Then, fill out the field titled "Embedding Model Save Path" with the absolute path to the directory '
-                             "n which the embedding models should be stored.")
+                             "in which the embedding models should be stored.")
             await emit_message(__event_emitter__, f"\[ % {error_message}\n \] ")
             return error_message
 
