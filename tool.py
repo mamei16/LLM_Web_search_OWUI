@@ -30,6 +30,7 @@ from collections import defaultdict
 from itertools import chain
 import asyncio
 import concurrent.futures
+import traceback
 
 from pydantic import BaseModel, Field
 import aiohttp
@@ -218,7 +219,9 @@ class Tools:
             await emit_message(__event_emitter__, f"\[ % {formatted_docs_string}\n \] ")
             return pretty_docs_string
         except Exception as exc:
+            p = re.compile(r"(?:[A-Z]:)?(?:[\\/].+)+([\\/].*\.py)")
             exception_message = str(exc)
+            await emit_message(__event_emitter__, p.sub(r"\1", traceback.format_exc()))
             await emit_status(__event_emitter__,
                              f'The search tool encountered an error: {exception_message}',
                              True)
