@@ -135,6 +135,11 @@ class Tools:
             default=False,
             description="Use just the website snippets returned by the search engine, instead of processing entire webpages",
         )
+        keep_results_in_context: bool =  Field(
+            default=True,
+            description="Keep search results in context. This allows the model to re-use previous search results for follow-up questions,"
+                        "but uses more VRAM and will slow down responses as the results accumulate.",
+        )
         chunk_size: int = Field(
             default=500, description="Max. chunk size. The maximal size of the individual chunks that each webpage will"
                                      " be split into, in characters", ge=5, le=100000,
@@ -267,9 +272,9 @@ class Tools:
                     )
 
             pretty_docs_string = docs_to_pretty_str(result_docs)
-            formatted_docs_string = pretty_docs_string.replace("\n", "\\n")
-
-            await emit_message(__event_emitter__, f"\[ % {formatted_docs_string}\n \] ")
+            if self.valves.keep_results_in_context:
+                formatted_docs_string = pretty_docs_string.replace("\n", "\\n")
+                await emit_message(__event_emitter__, f"\[ % {formatted_docs_string}\n \] ")
             return pretty_docs_string
         except Exception as exc:
             exception_message = str(exc)
