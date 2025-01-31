@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.2.2
+version: 0.2.3
 
 Copyright (C) 2024 mamei16
 
@@ -36,7 +36,6 @@ from pydantic import BaseModel, Field
 import aiohttp
 import numpy as np
 from requests.exceptions import JSONDecodeError
-from duckduckgo_search import AsyncDDGS
 from bs4 import BeautifulSoup
 from rank_bm25 import BM25Okapi
 from sklearn.neighbors import NearestNeighbors
@@ -44,7 +43,10 @@ from scipy.sparse import csr_array
 import torch
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForMaskedLM
-
+try:
+    from duckduckgo_search import AsyncDDGS
+except ImportError:
+    AsyncDDGS = None
 
 
 async def emit_status(event_emitter, description: str, done: bool):
@@ -180,6 +182,13 @@ class Tools:
                 result_docs = await self.document_retriever.aretrieve_from_searxng(query, self.valves.simple_search,
                                                                                    __event_emitter__)
             else:
+                if AsyncDDGS is None:
+                    await emit_status(__event_emitter__,
+                                      f'Error: Please install the correct Duckduckgo_search package',
+                                      True)
+                    return ("You must explain to the user that he/she needs to follow the instructions found at "
+                            "https://github.com/mamei16/LLM_Web_search_OWUI?tab=readme-ov-file#update-duckduckgo-search-python-package"
+                            " before being able to use the search tool with Duckduckgo")
                 result_docs = await self.document_retriever.aretrieve_from_duckduckgo(query, self.valves.simple_search,
                                                                                       __event_emitter__)
             source_url_set = list({d.metadata["source"] for d in result_docs})
