@@ -17,7 +17,7 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-
+from types import TracebackType
 from typing import Dict, Tuple, cast, Any, List, Literal, Optional, Union, Callable, Iterable, Sequence, Iterator
 from dataclasses import dataclass
 import urllib
@@ -42,10 +42,55 @@ from scipy.sparse import csr_array
 import torch
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForMaskedLM
-try:
-    from duckduckgo_search import AsyncDDGS
-except ImportError:
-    AsyncDDGS = None
+from duckduckgo_search import DDGS
+
+
+class AsyncDDGS(DDGS):
+    def __init__(
+        self,
+        headers: dict[str, str] | None = None,
+        proxy: str | None = None,
+        proxies: dict[str, str] | str | None = None,  # deprecated
+        timeout: int | None = 10,
+        verify: bool = True,
+    ) -> None:
+        """Initialize the AsyncDDGS object.
+
+        Args:
+            headers (dict, optional): Dictionary of headers for the HTTP client. Defaults to None.
+            proxy (str, optional): proxy for the HTTP client, supports http/https/socks5 protocols.
+                example: "http://user:pass@example.com:3128". Defaults to None.
+            timeout (int, optional): Timeout value for the HTTP client. Defaults to 10.
+            verify (bool): SSL verification when making the request. Defaults to True.
+        """
+        super().__init__(headers=headers, proxy=proxy, proxies=proxies, timeout=timeout, verify=verify)
+        self._executor = concurrent.futures.ThreadPoolExecutor()
+        self._loop = asyncio.get_running_loop()
+
+    async def __aenter__(self) -> "AsyncDDGS":
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        pass
+
+    async def atext(
+            self,
+            keywords: str,
+            region: str = "wt-wt",
+            safesearch: str = "moderate",
+            timelimit: str | None = None,
+            backend: str = "api",
+            max_results: int | None = None,
+    ) -> list[dict[str, str]]:
+        result = await self._loop.run_in_executor(
+            self._executor, super().text, keywords, region, safesearch, timelimit, backend, max_results
+        )
+        return result
 
 
 async def emit_status(event_emitter, description: str, done: bool):
@@ -332,15 +377,6 @@ class DocumentRetriever:
         await emit_status(event_emitter, f'Searching DuckDuckGo for "{query}"...', False)
 
         with AsyncDDGS() as ddgs:
-            answer_list = await ddgs.aanswers(query)
-            if answer_list:
-                if max_results > 1:
-                    max_results -= 1  # We already have 1 result now
-                answer_dict = answer_list[0]
-                instant_answer_doc = Document(page_content=answer_dict["text"],
-                                              metadata={"source": answer_dict["url"]})
-                documents.append(instant_answer_doc)
-
             result_documents = []
             result_urls = []
             for result in await ddgs.atext(query, region='wt-wt', safesearch='moderate', timelimit=None,
