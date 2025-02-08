@@ -23,7 +23,10 @@ By default, DuckDuckGo is used as the search engine, and the `duckduckgo-search`
 ```
 pip install --upgrade duckduckgo_search
 ```
-
+If you still get rate limited with the latest version, you can try installing my custom fork instead:
+```
+pip install --upgrade git+https://github.com/mamei16/duckduckgo_search@6.4.2
+```
 
 If you choose to use SearXNG as the search engine, you of course won't need to update `duckduckgo-search`.
 
