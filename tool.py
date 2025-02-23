@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 import re
 import warnings
 import copy
+import math
 from abc import abstractmethod
 from collections import defaultdict
 from itertools import chain
@@ -40,7 +41,9 @@ from rank_bm25 import BM25Okapi
 from sklearn.neighbors import NearestNeighbors
 from scipy.sparse import csr_array
 import torch
-from sentence_transformers import SentenceTransformer
+from torch import Tensor
+from sentence_transformers import SentenceTransformer, quantize_embeddings
+from sentence_transformers.util import batch_to_device, truncate_embeddings
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 from duckduckgo_search import DDGS
 from duckduckgo_search.utils import json_loads
@@ -399,9 +402,9 @@ def load_splade_model(repo_id: str, cache_dir: str, device: str):
 
 
 def load_embedding_model(repo_id: str, cache_dir: str, device: str):
-    return SentenceTransformer(repo_id, cache_folder=cache_dir,
-                               device=device,
-                               model_kwargs={"torch_dtype": torch.float32 if device == "cpu" else torch.float16})
+    return MySentenceTransformer(repo_id, cache_folder=cache_dir,
+                                 device=device,
+                                 model_kwargs={"torch_dtype": torch.float32 if device == "cpu" else torch.float16})
 
 
 @dataclass
@@ -1074,9 +1077,196 @@ class BoundedSemanticChunker(TextSplitter):
         return chunks
 
 
+class MySentenceTransformer(SentenceTransformer):
+    def batch_encode(
+            self,
+            sentences: str | list[str],
+            prompt_name: str | None = None,
+            prompt: str | None = None,
+            batch_size: int = 32,
+            output_value: Literal["sentence_embedding", "token_embeddings"] | None = "sentence_embedding",
+            precision: Literal["float32", "int8", "uint8", "binary", "ubinary"] = "float32",
+            convert_to_numpy: bool = True,
+            convert_to_tensor: bool = False,
+            device: str = None,
+            normalize_embeddings: bool = False,
+            **kwargs,
+    ) -> list[Tensor] | np.ndarray | Tensor:
+        if self.device.type == "hpu" and not self.is_hpu_graph_enabled:
+            import habana_frameworks.torch as ht
+
+            ht.hpu.wrap_in_hpu_graph(self, disable_tensor_cache=True)
+            self.is_hpu_graph_enabled = True
+
+        self.eval()
+        if convert_to_tensor:
+            convert_to_numpy = False
+
+        if output_value != "sentence_embedding":
+            convert_to_tensor = False
+            convert_to_numpy = False
+
+        input_was_string = False
+        if isinstance(sentences, str) or not hasattr(
+                sentences, "__len__"
+        ):  # Cast an individual sentence to a list with length 1
+            sentences = [sentences]
+            input_was_string = True
+
+        if prompt is None:
+            if prompt_name is not None:
+                try:
+                    prompt = self.prompts[prompt_name]
+                except KeyError:
+                    raise ValueError(
+                        f"Prompt name '{prompt_name}' not found in the configured prompts dictionary with keys {list(self.prompts.keys())!r}."
+                    )
+            elif self.default_prompt_name is not None:
+                prompt = self.prompts.get(self.default_prompt_name, None)
+        else:
+            if prompt_name is not None:
+                warnings.warn(
+                    "Encode with either a `prompt`, a `prompt_name`, or neither, but not both. "
+                    "Ignoring the `prompt_name` in favor of `prompt`."
+                )
+
+        extra_features = {}
+        if prompt is not None:
+            sentences = [prompt + sentence for sentence in sentences]
+
+            # Some models (e.g. INSTRUCTOR, GRIT) require removing the prompt before pooling
+            # Tracking the prompt length allow us to remove the prompt during pooling
+            tokenized_prompt = self.tokenize([prompt])
+            if "input_ids" in tokenized_prompt:
+                extra_features["prompt_length"] = tokenized_prompt["input_ids"].shape[-1] - 1
+
+        if device is None:
+            device = self.device
+        else:
+            device = torch.device(device)
+
+        self.to(device)
+
+        all_embeddings = []
+        tokenized_sentences = self.tokenizer(sentences, verbose=False)["input_ids"]
+        batchifyer = SimilarLengthsBatchifyer(batch_size, tokenized_sentences)
+        sentences = np.array(sentences)
+        batch_indices = []
+        for index_batch in batchifyer:
+            batch_indices.append(index_batch)
+            sentences_batch = sentences[index_batch]
+            features = self.tokenize(sentences_batch)
+            if self.device.type == "hpu":
+                if "input_ids" in features:
+                    curr_tokenize_len = features["input_ids"].shape
+                    additional_pad_len = 2 ** math.ceil(math.log2(curr_tokenize_len[1])) - curr_tokenize_len[1]
+                    features["input_ids"] = torch.cat(
+                        (
+                            features["input_ids"],
+                            torch.ones((curr_tokenize_len[0], additional_pad_len), dtype=torch.int8),
+                        ),
+                        -1,
+                    )
+                    features["attention_mask"] = torch.cat(
+                        (
+                            features["attention_mask"],
+                            torch.zeros((curr_tokenize_len[0], additional_pad_len), dtype=torch.int8),
+                        ),
+                        -1,
+                    )
+                    if "token_type_ids" in features:
+                        features["token_type_ids"] = torch.cat(
+                            (
+                                features["token_type_ids"],
+                                torch.zeros((curr_tokenize_len[0], additional_pad_len), dtype=torch.int8),
+                            ),
+                            -1,
+                        )
+
+            features = batch_to_device(features, device)
+            features.update(extra_features)
+
+            with torch.no_grad():
+                out_features = self.forward(features, **kwargs)
+                if self.device.type == "hpu":
+                    out_features = copy.deepcopy(out_features)
+
+                out_features["sentence_embedding"] = truncate_embeddings(
+                    out_features["sentence_embedding"], self.truncate_dim
+                )
+
+                if output_value == "token_embeddings":
+                    embeddings = []
+                    for token_emb, attention in zip(out_features[output_value], out_features["attention_mask"]):
+                        last_mask_id = len(attention) - 1
+                        while last_mask_id > 0 and attention[last_mask_id].item() == 0:
+                            last_mask_id -= 1
+
+                        embeddings.append(token_emb[0: last_mask_id + 1])
+                elif output_value is None:  # Return all outputs
+                    embeddings = []
+                    for sent_idx in range(len(out_features["sentence_embedding"])):
+                        row = {name: out_features[name][sent_idx] for name in out_features}
+                        embeddings.append(row)
+                else:  # Sentence embeddings
+                    embeddings = out_features[output_value]
+                    embeddings = embeddings.detach()
+                    if normalize_embeddings:
+                        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+
+                    # fixes for #522 and #487 to avoid oom problems on gpu with large datasets
+                    if convert_to_numpy:
+                        embeddings = embeddings.to("cpu", non_blocking=True)
+                        sync_device(device)
+
+                all_embeddings.extend(embeddings)
+
+        # Restore order after SimilarLengthsBatchifyer disrupted it:
+        # Ensure that the order of 'indices' and 'values' matches the order of the 'texts' parameter
+        batch_indices = np.concatenate(batch_indices)
+        sorted_indices = np.argsort(batch_indices)
+        all_embeddings = [all_embeddings[i] for i in sorted_indices]
+
+        if precision and precision != "float32":
+            all_embeddings = quantize_embeddings(all_embeddings, precision=precision)
+
+        if convert_to_tensor:
+            if len(all_embeddings):
+                if isinstance(all_embeddings, np.ndarray):
+                    all_embeddings = torch.from_numpy(all_embeddings)
+            else:
+                all_embeddings = torch.Tensor()
+        elif convert_to_numpy:
+            if not isinstance(all_embeddings, np.ndarray):
+                if all_embeddings and all_embeddings[0].dtype == torch.bfloat16:
+                    all_embeddings = np.asarray([emb.float().numpy() for emb in all_embeddings])
+                else:
+                    all_embeddings = np.asarray([emb.numpy() for emb in all_embeddings])
+        elif isinstance(all_embeddings, np.ndarray):
+            all_embeddings = [torch.from_numpy(embedding) for embedding in all_embeddings]
+
+        if input_was_string:
+            all_embeddings = all_embeddings[0]
+
+        return all_embeddings
+
+
+def sync_device(device: torch.device):
+    if device.type == "cpu":
+        return
+    elif device.type == "cuda":
+        torch.cuda.synchronize()
+    elif device.type == "mps":
+        torch.mps.synchronize()
+    elif device.type == "xpu":
+        torch.xpu.synchronize(device)
+    else:
+        warnings.warn("Device type does not match 'cuda', 'xpu' or 'mps'. Not synchronizing")
+
+
 class DenseRetriever:
 
-    def __init__(self, embedding_model: SentenceTransformer, num_results: int = 5, similarity_threshold: float = 0.5):
+    def __init__(self, embedding_model: MySentenceTransformer, num_results: int = 5, similarity_threshold: float = 0.5):
         self.embedding_model = embedding_model
         self.num_results = num_results
         self.similarity_threshold = similarity_threshold
@@ -1086,7 +1276,7 @@ class DenseRetriever:
 
     def add_documents(self, documents: List[Document]):
         self.documents = documents
-        self.document_embeddings = self.embedding_model.encode([doc.page_content for doc in documents])
+        self.document_embeddings = self.embedding_model.batch_encode([doc.page_content for doc in documents])
         self.knn.fit(self.document_embeddings)
 
     def get_relevant_documents(self, query: str) -> List[Document]:
@@ -1224,7 +1414,9 @@ class SpladeRetriever:
     def compute_document_vectors(self, texts: List[str], batch_size: int) -> Tuple[List[List[int]], List[List[float]]]:
         indices = []
         values = []
-        batchifyer = SimilarLengthsBatchifyer(batch_size, texts)
+        tokenized_texts = self.splade_doc_tokenizer(texts, truncation=False, padding=False,
+                                                    return_tensors="np")["input_ids"]
+        batchifyer = SimilarLengthsBatchifyer(batch_size, tokenized_texts)
         texts = np.array(texts)
         batch_indices = []
         for index_batch in batchifyer:
