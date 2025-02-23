@@ -381,8 +381,8 @@ class Tools:
 
             pretty_docs_string = docs_to_pretty_str(result_docs)
             if self.valves.keep_results_in_context:
-                formatted_docs_string = pretty_docs_string.replace("\n", "\\n")
-                await emit_message(__event_emitter__, f"\[ % {formatted_docs_string}\n \] ")
+                escaped_docs_string = katex_escape_str(pretty_docs_string)
+                await emit_message(__event_emitter__, f"\\[ % {escaped_docs_string}\n \\] ")
             return pretty_docs_string
         except Exception as exc:
             exception_message = str(exc)
@@ -390,6 +390,13 @@ class Tools:
                              f'The search tool encountered an error: {exception_message}',
                              True)
             return f"The search tool encountered an error: {exception_message}"
+
+
+def katex_escape_str(string: str) -> str:
+    return (string.replace("\n", "\\n")
+                  .replace("\\[", "{[}")
+                  .replace("\\]", "{]}")
+                  .replace("\r", ""))
 
 
 def load_splade_model(repo_id: str, cache_dir: str, device: str):
