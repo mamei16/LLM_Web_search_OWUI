@@ -148,8 +148,7 @@ class AsyncDDGS(DDGS):
             page_data = resp_json.get("RelatedTopics", [])
         except DuckDuckGoSearchException as e:
             print(f"LLM_Web_search | DuckDuckGo instant answer yielded error: {str(e)}")
-            if not results:
-                return []
+            return results
 
         for row in page_data:
             topic = row.get("Name")
