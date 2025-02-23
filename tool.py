@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.2.4
+version: 0.2.5
 
 Copyright (C) 2024 mamei16
 
@@ -43,6 +43,7 @@ import torch
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 from duckduckgo_search import DDGS
+from duckduckgo_search.utils import json_loads
 
 
 class AsyncDDGS(DDGS):
@@ -89,6 +90,101 @@ class AsyncDDGS(DDGS):
     ) -> list[dict[str, str]]:
         result = await self._loop.run_in_executor(
             self._executor, super().text, keywords, region, safesearch, timelimit, backend, max_results
+        )
+        return result
+
+    def answers(self, keywords: str) -> list[dict[str, str]]:
+        """DuckDuckGo instant answers. Query params: https://duckduckgo.com/params.
+
+        Args:
+            keywords: keywords for query,
+
+        Returns:
+            List of dictionaries with instant answers results.
+
+        Raises:
+            DuckDuckGoSearchException: Base exception for duckduckgo_search errors.
+            RatelimitException: Inherits from DuckDuckGoSearchException, raised for exceeding API request rate limits.
+            TimeoutException: Inherits from DuckDuckGoSearchException, raised for API request timeouts.
+        """
+        assert keywords, "keywords is mandatory"
+
+        payload = {
+            "q": f"what is {keywords}",
+            "format": "json",
+        }
+        resp_content = self._get_url("GET", "https://api.duckduckgo.com/", params=payload)
+        page_data = json_loads(resp_content)
+
+        results = []
+        answer = page_data.get("AbstractText")
+        url = page_data.get("AbstractURL")
+        if answer:
+            results.append(
+                {
+                    "icon": None,
+                    "text": answer,
+                    "topic": None,
+                    "url": url,
+                }
+            )
+
+        # related
+        payload = {
+            "q": f"{keywords}",
+            "format": "json",
+        }
+        resp_content = self._get_url("GET", "https://api.duckduckgo.com/", params=payload)
+        resp_json = json_loads(resp_content)
+        page_data = resp_json.get("RelatedTopics", [])
+
+        for row in page_data:
+            topic = row.get("Name")
+            if not topic:
+                icon = row["Icon"].get("URL")
+                results.append(
+                    {
+                        "icon": f"https://duckduckgo.com{icon}" if icon else "",
+                        "text": row["Text"],
+                        "topic": None,
+                        "url": row["FirstURL"],
+                    }
+                )
+            else:
+                for subrow in row["Topics"]:
+                    icon = subrow["Icon"].get("URL")
+                    results.append(
+                        {
+                            "icon": f"https://duckduckgo.com{icon}" if icon else "",
+                            "text": subrow["Text"],
+                            "topic": topic,
+                            "url": subrow["FirstURL"],
+                        }
+                    )
+
+        return results
+
+    async def aanswers(
+            self,
+            keywords: str,
+    ) -> list[dict[str, str]]:
+        """DuckDuckGo async instant answers. Query params: https://duckduckgo.com/params.
+
+        Args:
+            keywords: keywords for query,
+
+        Returns:
+            List of dictionaries with instant answers results.
+
+        Raises:
+            DuckDuckGoSearchException: Base exception for duckduckgo_search errors.
+            RatelimitException: Inherits from DuckDuckGoSearchException, raised for exceeding API request rate limits.
+            TimeoutException: Inherits from DuckDuckGoSearchException, raised for API request timeouts.
+        """
+        result = await self._loop.run_in_executor(
+            self._executor,
+            self.answers,
+            keywords,
         )
         return result
 
@@ -382,6 +478,15 @@ class DocumentRetriever:
         await emit_status(event_emitter, f'Searching DuckDuckGo for "{query}"...', False)
 
         with AsyncDDGS() as ddgs:
+            answer_list = await ddgs.aanswers(query)
+            if answer_list:
+                if max_results > 1:
+                    max_results -= 1  # We already have 1 result now
+                answer_dict = answer_list[0]
+                instant_answer_doc = Document(page_content=answer_dict["text"],
+                                              metadata={"source": answer_dict["url"]})
+                documents.append(instant_answer_doc)
+
             result_documents = []
             result_urls = []
             for result in await ddgs.atext(query, region='wt-wt', safesearch='moderate', timelimit=None,
