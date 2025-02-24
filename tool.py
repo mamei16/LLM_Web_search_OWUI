@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.3.2
+version: 0.3.3
 
 Copyright (C) 2024 mamei16
 
@@ -117,8 +117,8 @@ class AsyncDDGS(DDGS):
             "q": f"what is {keywords}",
             "format": "json",
         }
-        resp_content = self._get_url("GET", "https://api.duckduckgo.com/", params=payload)
         try:
+            resp_content = self._get_url("GET", "https://api.duckduckgo.com/", params=payload)
             page_data = json_loads(resp_content)
         except DuckDuckGoSearchException as e:
             print(f"LLM_Web_search | DuckDuckGo instant answer yielded error: {str(e)}")
@@ -136,43 +136,6 @@ class AsyncDDGS(DDGS):
                     "url": url,
                 }
             )
-
-        # related
-        payload = {
-            "q": f"{keywords}",
-            "format": "json",
-        }
-        resp_content = self._get_url("GET", "https://api.duckduckgo.com/", params=payload)
-        try:
-            resp_json = json_loads(resp_content)
-            page_data = resp_json.get("RelatedTopics", [])
-        except DuckDuckGoSearchException as e:
-            print(f"LLM_Web_search | DuckDuckGo instant answer yielded error: {str(e)}")
-            return results
-
-        for row in page_data:
-            topic = row.get("Name")
-            if not topic:
-                icon = row["Icon"].get("URL")
-                results.append(
-                    {
-                        "icon": f"https://duckduckgo.com{icon}" if icon else "",
-                        "text": row["Text"],
-                        "topic": None,
-                        "url": row["FirstURL"],
-                    }
-                )
-            else:
-                for subrow in row["Topics"]:
-                    icon = subrow["Icon"].get("URL")
-                    results.append(
-                        {
-                            "icon": f"https://duckduckgo.com{icon}" if icon else "",
-                            "text": subrow["Text"],
-                            "topic": topic,
-                            "url": subrow["FirstURL"],
-                        }
-                    )
 
         return results
 
