@@ -302,13 +302,6 @@ class Tools:
                 result_docs = await self.document_retriever.aretrieve_from_searxng(query, self.valves.simple_search,
                                                                                    __event_emitter__)
             else:
-                if AsyncDDGS is None:
-                    await emit_status(__event_emitter__,
-                                      f'Error: Please install the correct Duckduckgo_search package',
-                                      True)
-                    return ("You must explain to the user that he/she needs to follow the instructions found at "
-                            "https://github.com/mamei16/LLM_Web_search_OWUI?tab=readme-ov-file#update-duckduckgo-search-python-package"
-                            " before being able to use the search tool with Duckduckgo")
                 result_docs = await self.document_retriever.aretrieve_from_duckduckgo(query, self.valves.simple_search,
                                                                                       __event_emitter__)
             source_url_set = list({d.metadata["source"] for d in result_docs})
