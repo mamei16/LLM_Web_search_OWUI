@@ -1581,7 +1581,7 @@ class BM25Retriever:
 
 async def async_download_html(url: str, headers: Dict, timeout: int, proxy: str = None,
                               proxy_except_domains : tuple[str] = None):
-    if proxy_except_domains and url.endswith(proxy_except_domains):
+    if proxy_except_domains and urlparse(url).netloc.endswith(proxy_except_domains):
         proxy = None
     async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(timeout),
                                      max_field_size=65536, proxy=proxy) as session:
