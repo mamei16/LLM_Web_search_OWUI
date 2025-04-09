@@ -17,6 +17,7 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+import os
 from types import TracebackType
 from typing import Dict, Tuple, cast, Any, List, Literal, Optional, Union, Callable, Iterable, Sequence, Iterator
 from dataclasses import dataclass
@@ -410,6 +411,8 @@ class DocumentRetriever:
         self.splade_query_tokenizer = None
         self.splade_query_model = None
         self.spaces_regex = re.compile(r" {3,}")
+        self.proxy = None
+        self.proxy_except_domains = None
 
     def update_settings(self, settings: Tools.Valves):
         self.device = "cpu" if settings.cpu_only else "cuda"
@@ -425,6 +428,10 @@ class DocumentRetriever:
         self.client_timeout = settings.client_timeout
         self.searxng_url = settings.searxng_url
         self.splade_batch_size = settings.splade_batch_size
+        self.proxy = os.environ.get("https_proxy", os.environ.get("http_proxy"))
+        if os.environ.get("no_proxy"):
+            self.proxy_except_domains = tuple(os.environ.get("no_proxy").split(','))
+
 
     async def aload_models(self, __event_emitter__):
         await emit_status(__event_emitter__, "Loading embedding model 1/3...", False)
@@ -454,7 +461,7 @@ class DocumentRetriever:
         max_results = self.max_results
         await emit_status(event_emitter, f'Searching DuckDuckGo for "{query}"...', False)
 
-        with AsyncDDGS() as ddgs:
+        with AsyncDDGS(proxy=self.proxy) as ddgs:
             answer_list = await ddgs.aanswers(query)
             if answer_list:
                 if max_results > 1:
@@ -557,7 +564,7 @@ class DocumentRetriever:
                                                            separators=["\n\n", "\n", ".", ", ", " ", ""])
 
         await emit_status(event_emitter, "Downloading and chunking webpages...", False)
-        split_docs = await async_fetch_chunk_websites(url_list, text_splitter, self.client_timeout)
+        split_docs = await async_fetch_chunk_websites(url_list, text_splitter, self.client_timeout, self.proxy)
 
         await emit_status(event_emitter, "Retrieving relevant results...", False)
         if self.ensemble_weighting > 0:
@@ -1565,9 +1572,12 @@ class BM25Retriever:
         return return_docs
 
 
-async def async_download_html(url: str, headers: Dict, timeout: int):
+async def async_download_html(url: str, headers: Dict, timeout: int, proxy: str = None,
+                              proxy_except_domains : tuple[str] = None):
+    if proxy_except_domains and url.endswith(proxy_except_domains):
+        proxy = None
     async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(timeout),
-                                     max_field_size=65536) as session:
+                                     max_field_size=65536, proxy=proxy) as session:
         try:
             resp = await session.get(url)
             return await resp.text(), url
@@ -1584,12 +1594,12 @@ async def async_download_html(url: str, headers: Dict, timeout: int):
 
 async def async_fetch_chunk_websites(urls: List[str],
                                      text_splitter: BoundedSemanticChunker or RecursiveCharacterTextSplitter,
-                                     timeout: int = 10):
+                                     timeout: int = 10, proxy: str = None, proxy_except_domains : tuple[str] = None):
     headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                "Accept-Language": "en-US,en;q=0.5",
                "Accept-Encoding": "gzip;q=1, *;q=0.5"}
-    result_futures = [async_download_html(url, headers, timeout) for url in urls]
+    result_futures = [async_download_html(url, headers, timeout, proxy, proxy_except_domains) for url in urls]
     chunks = []
     loop = asyncio.get_running_loop()
     with concurrent.futures.ThreadPoolExecutor() as pool:
