@@ -49,6 +49,12 @@ from transformers import AutoTokenizer, AutoModelForMaskedLM
 from duckduckgo_search import DDGS
 from duckduckgo_search.utils import json_loads
 from duckduckgo_search.exceptions import DuckDuckGoSearchException
+from open_webui.env import BASE_DIR
+try:
+    from dotenv import find_dotenv, load_dotenv
+    load_dotenv(find_dotenv(str(BASE_DIR / ".env")))
+except ImportError:
+    print("dotenv not installed, skipping...")
 
 
 class AsyncDDGS(DDGS):
