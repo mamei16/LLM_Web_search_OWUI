@@ -570,7 +570,8 @@ class DocumentRetriever:
                                                            separators=["\n\n", "\n", ".", ", ", " ", ""])
 
         await emit_status(event_emitter, "Downloading and chunking webpages...", False)
-        split_docs = await async_fetch_chunk_websites(url_list, text_splitter, self.client_timeout, self.proxy)
+        split_docs = await async_fetch_chunk_websites(url_list, text_splitter, self.client_timeout, self.proxy,
+                                                      self.proxy_except_domains)
 
         await emit_status(event_emitter, "Retrieving relevant results...", False)
         if self.ensemble_weighting > 0:
