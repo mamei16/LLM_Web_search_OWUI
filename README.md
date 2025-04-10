@@ -36,6 +36,9 @@ Most settings are already explained briefly in the UI, and are expanded on in th
 Set this value to 0 to use keyword retrieval only, or 1 to use purely dense retrieval. If you choose to run the tool on CPU only, I recommend to either use BM25 as the keyword retrieval method or use purely dense retrieval, as the SPLADE document encoder will run slowly on a CPU.
 
 
+## Proxy Support
+This tool adheres to the proxy settings of the main web UI, as described in the [open webui documentation](https://docs.openwebui.com/getting-started/env-configuration#proxy-settings). Optionally, both requests fetching search results from Duckduckgo and requests downloading result webpages can be routed through a proxy. 
+
 ## Possible Issue with AMD ROCm on Linux
 
 If you're running both the LLM server (such as Oobabooga's textgen webUI or Ollama) and Open WebUI on the same linux machine, have an AMD GPU and use ROCm, you may encounter freezes/hanging in either the web search itself (being stuck at either the "Downloading and chunking webpages..." or "Retrieving relevant results..." stage) or the LLM response(s) following the web search. 
