@@ -18,13 +18,13 @@ This tool processes search results locally on device. For this purpose, three em
 
 ### Update DuckDuckGo Search Python Package
 
-By default, DuckDuckGo is used as the search engine, and the `duckduckgo-search` python package is used to get results from DuckDuckGo. However, the `open-webui` PyPI package may ship with an outdated version of `duckduckgo-search` (check [here](https://github.com/open-webui/open-webui/blob/main/pyproject.toml#L97)). To avoid `202 Ratelimit` exceptions, you may want to update `duckduckgo-search` before using this tool:
+The `duckduckgo-search` python package is now called `ddgs` and may now also retrieve results from other search engines, such as Bing. If you're fine with this, you can try to avoid the `202 Ratelimit` exceptions that regularly appear when using the old `duckduckgo-search` by manually installing `ddgs` before using this extension:
    
 ```
-pip install --upgrade duckduckgo_search
+pip install ddgs
 ```
 
-If you choose to use SearXNG as the search engine, you of course won't need to update `duckduckgo-search`.
+If you choose to use SearXNG as the search engine backend, you of course won't need to install `ddgs`.
 
 
 ## Settings (Valves)
