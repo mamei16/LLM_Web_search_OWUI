@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.4.1
+version: 0.4.2
 
 Copyright (C) 2024 mamei16
 
@@ -32,6 +32,7 @@ from collections import defaultdict
 from itertools import chain
 import asyncio
 import concurrent.futures
+import logging
 
 from pydantic import BaseModel, Field
 import aiohttp
@@ -60,6 +61,9 @@ try:
     load_dotenv(find_dotenv(str(BASE_DIR / ".env")))
 except ImportError:
     print("dotenv not installed, skipping...")
+
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncDDGS(DDGS):
@@ -318,6 +322,21 @@ class Tools:
             else:
                 result_docs = await self.document_retriever.aretrieve_from_duckduckgo(query, self.valves.simple_search,
                                                                                       __event_emitter__)
+            if not result_docs:
+                await __event_emitter__(
+                    {
+                        "type": "status",
+                        "data": {
+                            "action": "web_search",
+                            "description": f"The search engine did not return any results",
+                            "done": True,
+                            "query": query,
+                            "urls": []
+                        },
+                    }
+                )
+                return "Warning: The search engine did not return any results"
+
             source_url_set = list({d.metadata["source"] for d in result_docs})
             if __event_emitter__:
                 await __event_emitter__(
@@ -558,6 +577,9 @@ class DocumentRetriever:
         return text
 
     async def aretrieve_from_snippets(self, query: str, documents: list[Document], event_emitter) -> list[Document]:
+        if not documents:
+            logger.warning("Search engine did not return any results")
+            return []
         await emit_status(event_emitter, "Retrieving relevant results...", False)
 
         dense_retriever = DenseRetriever(self.embedding_model, num_results=self.num_results,
@@ -566,6 +588,9 @@ class DocumentRetriever:
         return dense_retriever.get_relevant_documents(query)
 
     async def aretrieve_from_webpages(self, query: str, url_list: list[str], event_emitter) -> list[Document]:
+        if not url_list:
+            logger.warning("Search engine did not return any results")
+            return []
         if self.chunking_method == "semantic":
             text_splitter = BoundedSemanticChunker(self.embedding_model, breakpoint_threshold_type="percentile",
                                                    breakpoint_threshold_amount=self.chunker_breakpoint_threshold_amount,
