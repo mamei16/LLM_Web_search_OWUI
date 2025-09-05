@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.6.0
+version: 0.6.1
 
 Copyright (C) 2024 mamei16
 
@@ -122,7 +122,7 @@ class AsyncDDGS(DDGS):
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
             async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(timeout),
-                                             max_field_size=65536) as session:
+                                             max_field_size=65536, proxy=self.proxy) as session:
                 try:
                     response = await session.get(search_url)
                     response.raise_for_status()
@@ -147,7 +147,6 @@ class AsyncDDGS(DDGS):
             return result_dicts
 
         except Exception as e:
-            logger = logging.getLogger('text-generation-webui')
             logger.error(f"Error performing web search: {e}")
             return []
 
