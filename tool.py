@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.5.0
+version: 0.6.0
 
 Copyright (C) 2024 mamei16
 
@@ -22,7 +22,7 @@ from types import TracebackType
 from typing import Dict, Tuple, cast, Any, List, Literal, Optional, Union, Callable, Iterable, Sequence, Iterator
 from dataclasses import dataclass
 import urllib
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote_plus
 import re
 import warnings
 import copy
@@ -33,6 +33,7 @@ from itertools import chain
 import asyncio
 import concurrent.futures
 import logging
+import html
 
 from pydantic import BaseModel, Field
 import aiohttp
@@ -113,6 +114,43 @@ class AsyncDDGS(DDGS):
         )
         return result
 
+    async def aduckduckgo(self, query: str, max_results=3, timeout=10):
+        """Modified version of function from https://github.com/oobabooga/text-generation-webui in modules/web_search.py"""
+        try:
+            # Use DuckDuckGo HTML search endpoint
+            search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+
+            async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(timeout),
+                                             max_field_size=65536) as session:
+                try:
+                    response = await session.get(search_url)
+                    response.raise_for_status()
+                    response_text = await response.text()
+                except TimeoutError:
+                    logger.warning('LLM_Web_search | %r did not load in time' % search_url)
+                except Exception as exc:
+                    logger.error('LLM_Web_search | %r generated an exception: %s' % (search_url, exc))
+
+            # Extract results with regex
+            titles = re.findall(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)</a>', response_text, re.DOTALL)
+            urls = re.findall(r'<a[^>]*class="[^"]*result__url[^"]*"[^>]*>(.*?)</a>', response_text, re.DOTALL)
+            snippets = re.findall(r'<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>', response_text, re.DOTALL)
+
+            result_dicts = []
+            for i in range(min(len(titles), len(urls), len(snippets), max_results)):
+                url = f"https://{urls[i].strip()}"
+                title = re.sub(r'<[^>]+>', '', titles[i]).strip()
+                title = html.unescape(title)
+                snippet = html.unescape(snippets[i]).replace("<b>", "").replace("</b>", "")
+                result_dicts.append({"href": url, "title": title, "body": snippet})
+            return result_dicts
+
+        except Exception as e:
+            logger = logging.getLogger('text-generation-webui')
+            logger.error(f"Error performing web search: {e}")
+            return []
+
 async def emit_status(event_emitter, description: str, done: bool):
     if event_emitter:
         await event_emitter(
@@ -160,6 +198,11 @@ class Tools:
             default=True,
             description="Keep search results in context. This allows the model to re-use previous search results for follow-up questions,"
                         "but uses more VRAM and will slow down responses as the results accumulate.",
+        )
+        duckduckgo_only: bool = Field(
+            default=True,
+            description="Use DuckDuckGo instead of DDGS. "
+                        "This limits the number of search engine results to process per query to max. 10.",
         )
         chunk_size: int = Field(
             default=500, description="Max. chunk size. The maximal size of the individual chunks that each webpage will"
@@ -402,6 +445,7 @@ class DocumentRetriever:
         self.proxy = os.environ.get("https_proxy", os.environ.get("http_proxy"))
         if os.environ.get("no_proxy"):
             self.proxy_except_domains = tuple(os.environ.get("no_proxy").split(','))
+        self.duckduckgo_only = settings.duckduckgo_only
 
 
     async def aload_models(self, __event_emitter__):
@@ -437,13 +481,18 @@ class DocumentRetriever:
         documents = []
         query = query.strip("\"'")
         max_results = self.max_results
-        await emit_status(event_emitter, f'Searching DDGS for "{query}"...', False)
+        engine_str = "DuckDuckGo" if self.duckduckgo_only else "DDGS"
+        await emit_status(event_emitter, f'Searching {engine_str} for "{query}"...', False)
 
         with AsyncDDGS(proxy=self.proxy) as ddgs:
             result_documents = []
             result_urls = []
-            for result in await ddgs.atext(query, region='wt-wt', safesearch='moderate', timelimit=None,
-                                           max_results=self.num_results):
+            if self.duckduckgo_only:
+                results = await ddgs.aduckduckgo(query, self.num_results, 30)
+            else:
+                results = await ddgs.atext(query, region='wt-wt', safesearch='moderate', timelimit=None,
+                                           max_results=self.num_results)
+            for result in results:
                 result_document = Document(page_content=f"Title: {result['title']}\n{result['body']}",
                                            metadata={"source": result["href"]})
                 result_documents.append(result_document)
