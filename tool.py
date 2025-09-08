@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.6.2
+version: 0.7.0
 
 Copyright (C) 2024 mamei16
 
@@ -132,6 +132,9 @@ class AsyncDDGS(DDGS):
                 except Exception as exc:
                     logger.error('LLM_Web_search | %r generated an exception: %s' % (search_url, exc))
 
+            if re.search("anomaly-modal__mask", response_text, re.DOTALL):
+                raise ValueError("Web search failed due to CAPTCHA")
+
             # Extract results with regex
             titles = re.findall(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)</a>', response_text, re.DOTALL)
             urls = re.findall(r'<a[^>]*class="[^"]*result__url[^"]*"[^>]*>(.*?)</a>', response_text, re.DOTALL)
@@ -247,7 +250,8 @@ class Tools:
             ge=0, le=1000
         )
         searxng_url: str = Field(
-            default="None", description='SearXNG URL. If not equal to "None", searXNG will be used instead of DuckDuckGo',
+            default="None", description='SearXNG server URL. If not equal to "None", '
+                                        'searXNG will be used as the search backend.',
         )
 
     def __init__(self):
@@ -267,6 +271,24 @@ class Tools:
         Choose this tool if you can answer the user without using any tool.
         """
         return ""
+
+    async def search_webpage(
+            self, query: str, webpage: str, __user__: dict, __event_emitter__=None
+    ) -> str:
+        """
+        Search a specific webpage for the provided query. Provide the whole URL if possible, otherwise provide
+        just the domain. You must formulate your own search query based on the user's message.
+        """
+        netloc = urlparse(webpage).netloc
+        if netloc == '' or webpage.lstrip("https:/").rstrip("/") == netloc:
+            new_query = f"domain:{webpage} {query}"
+        else:
+            if self.valves.duckduckgo_only or self.valves.searxng_url:
+                new_query = f"url:{webpage} {query}"
+            else: # ddgs: v9.0.0 limits search engine to bing only, change this once ddgs version changes
+                new_query = f"site:{webpage} {query}"
+
+        return await self.search_web(new_query, __user__, __event_emitter__)
 
     async def search_web(
             self, query: str, __user__: dict, __event_emitter__=None
@@ -489,7 +511,7 @@ class DocumentRetriever:
             if self.duckduckgo_only:
                 results = await ddgs.aduckduckgo(query, self.num_results, 30)
             else:
-                results = await ddgs.atext(query, region='wt-wt', safesearch='moderate', timelimit=None,
+                results = await ddgs.atext(query, safesearch='moderate', timelimit=None,
                                            max_results=self.num_results)
             for result in results:
                 result_document = Document(page_content=f"Title: {result['title']}\n{result['body']}",
