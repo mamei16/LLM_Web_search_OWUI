@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.6.1
+version: 0.6.2
 
 Copyright (C) 2024 mamei16
 
@@ -110,7 +110,7 @@ class AsyncDDGS(DDGS):
             max_results: int | None = None,
     ) -> list[dict[str, str]]:
         result = await self._loop.run_in_executor(
-            self._executor, super().text, keywords, region, safesearch, timelimit, backend, max_results
+            self._executor, self.text, keywords, region, safesearch, timelimit, backend, max_results
         )
         return result
 
@@ -591,10 +591,13 @@ class DocumentRetriever:
         await emit_status(event_emitter, "Downloading and chunking webpages...", False)
         split_docs = await async_fetch_chunk_websites(url_list, text_splitter, self.client_timeout, self.proxy,
                                                       self.proxy_except_domains)
+        if not split_docs:
+            logger.warning("Failed to fetch any websites")
+            return []
 
         await emit_status(event_emitter, "Retrieving relevant results...", False)
         if self.ensemble_weighting > 0:
-            dense_retriever = DenseRetriever(self.embedding_model, num_results=self.num_results,
+            dense_retriever = DenseRetriever(self.embedding_model, num_results=min(self.num_results, len(split_docs)),
                                              similarity_threshold=self.similarity_threshold)
             dense_retriever.add_documents(split_docs)
             dense_result_docs = dense_retriever.get_relevant_documents(query)
@@ -790,7 +793,7 @@ class RecursiveCharacterTextSplitter(TextSplitter):
 
     def __init__(self, chunk_size: int = 4000, chunk_overlap: int = 200, length_function: Callable[[str], int] = len,
                  add_start_index: bool = False, strip_whitespace: bool = True, separators: Optional[List[str]] = None,
-                 keep_separator: Union[bool, Literal["start", "end"]] = True, is_separator_regex: bool = False,
+                 keep_separator: Union[bool, Literal["start", "end"]] = "end", is_separator_regex: bool = False,
                  **kwargs: Any) -> None:
         """Create a new TextSplitter."""
         super().__init__(chunk_size, chunk_overlap, length_function, keep_separator, add_start_index, strip_whitespace)
