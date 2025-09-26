@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.7.0
+version: 0.7.1
 
 Copyright (C) 2024 mamei16
 
@@ -557,6 +557,9 @@ class DocumentRetriever:
 
                 result_dicts = response_dict["results"]
                 if not result_dicts:
+                    if "unresponsive_engines" in response_dict and not result_urls:
+                        raise ValueError("No results found. Some search engines were unresponsive: "
+                                         + str(response_dict["unresponsive_engines"]))
                     break
                 for result in result_dicts:
                     if "content" in result:  # Since some websites don't provide any description
