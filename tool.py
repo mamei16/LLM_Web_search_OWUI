@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.7.1
+version: 0.7.2
 
 Copyright (C) 2024 mamei16
 
@@ -263,14 +263,14 @@ class Tools:
         """
         Choose this tool if existing search results from a previous web search can be used to answer the user's query.
         """
-        return ""
+        pass
 
     @staticmethod
     def no_tool_necessary(__user__: dict, __event_emitter__=None):
         """
         Choose this tool if you can answer the user without using any tool.
         """
-        return ""
+        pass
 
     async def search_webpage(
             self, query: str, webpage: str, __user__: dict, __event_emitter__=None
