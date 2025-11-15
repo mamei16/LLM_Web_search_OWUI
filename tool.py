@@ -23,7 +23,7 @@ from typing import Dict, Tuple, cast, Any, List, Literal, Optional, Union, Calla
 from dataclasses import dataclass
 import urllib
 from urllib.parse import urlparse, quote_plus
-import re
+import regex
 import warnings
 import copy
 import math
@@ -132,18 +132,18 @@ class AsyncDDGS(DDGS):
                 except Exception as exc:
                     logger.error('LLM_Web_search | %r generated an exception: %s' % (search_url, exc))
 
-            if re.search("anomaly-modal__mask", response_text, re.DOTALL):
+            if regex.search("anomaly-modal__mask", response_text, regex.DOTALL):
                 raise ValueError("Web search failed due to CAPTCHA")
 
             # Extract results with regex
-            titles = re.findall(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)</a>', response_text, re.DOTALL)
-            urls = re.findall(r'<a[^>]*class="[^"]*result__url[^"]*"[^>]*>(.*?)</a>', response_text, re.DOTALL)
-            snippets = re.findall(r'<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>', response_text, re.DOTALL)
+            titles = regex.findall(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)</a>', response_text, regex.DOTALL)
+            urls = regex.findall(r'<a[^>]*class="[^"]*result__url[^"]*"[^>]*>(.*?)</a>', response_text, regex.DOTALL)
+            snippets = regex.findall(r'<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>', response_text, regex.DOTALL)
 
             result_dicts = []
             for i in range(min(len(titles), len(urls), len(snippets), max_results)):
                 url = f"https://{urls[i].strip()}"
-                title = re.sub(r'<[^>]+>', '', titles[i]).strip()
+                title = regex.sub(r'<[^>]+>', '', titles[i]).strip()
                 title = html.unescape(title)
                 snippet = html.unescape(snippets[i]).replace("<b>", "").replace("</b>", "")
                 result_dicts.append({"href": url, "title": title, "body": snippet})
@@ -423,7 +423,7 @@ class Document:
 
 
 class DocumentRetriever:
-    spaces_regex: re.Pattern
+    spaces_regex: regex.Pattern
     device: str
     model_cache_dir: str
     num_results: int
@@ -445,7 +445,7 @@ class DocumentRetriever:
         self.splade_query_tokenizer = None
         self.splade_query_model = None
         self.token_classification_chunker = None
-        self.spaces_regex = re.compile(r" {3,}")
+        self.spaces_regex = regex.compile(r" {3,}")
         self.proxy = None
         self.proxy_except_domains = None
 
@@ -688,7 +688,7 @@ class TextSplitter:
             chunk_size: int = 4000,
             chunk_overlap: int = 200,
             length_function: Callable[[str], int] = len,
-            keep_separator: Union[bool, Literal["start", "end"]] = False,
+            keep_separator: Union[bool, Literal["start", "end"]] = "end",
             add_start_index: bool = False,
             strip_whitespace: bool = True,
     ) -> None:
@@ -838,16 +838,16 @@ class RecursiveCharacterTextSplitter(TextSplitter):
         separator = separators[-1]
         new_separators = []
         for i, _s in enumerate(separators):
-            _separator = _s if self._is_separator_regex else re.escape(_s)
+            _separator = _s if self._is_separator_regex else regex.escape(_s)
             if _s == "":
                 separator = _s
                 break
-            if re.search(_separator, text):
+            if regex.search(_separator, text):
                 separator = _s
                 new_separators = separators[i + 1:]
                 break
 
-        _separator = separator if self._is_separator_regex else re.escape(separator)
+        _separator = separator if self._is_separator_regex else regex.escape(separator)
         splits = _split_text_with_regex(text, _separator, self._keep_separator)
 
         # Now go merging things, recursively splitting longer texts.
@@ -882,7 +882,7 @@ def _split_text_with_regex(
     if separator:
         if keep_separator:
             # The parentheses in the pattern keep the delimiters in the result.
-            _splits = re.split(f"({separator})", text)
+            _splits = regex.split(f"({separator})", text)
             splits = (
                 ([_splits[i] + _splits[i + 1] for i in range(0, len(_splits) - 1, 2)])
                 if keep_separator == "end"
@@ -896,7 +896,7 @@ def _split_text_with_regex(
                 else ([_splits[0]] + splits)
             )
         else:
-            splits = re.split(separator, text)
+            splits = regex.split(separator, text)
     else:
         splits = list(text)
     return [s for s in splits if s != ""]
@@ -956,7 +956,7 @@ class BoundedSemanticChunker(TextSplitter):
         self.max_chunk_size = max_chunk_size
         self.min_chunk_size = min_chunk_size
         # Splitting the text on '.', '?', and '!'
-        self.sentence_split_regex = re.compile(r"(?<=[.?!])\s+")
+        self.sentence_split_regex = regex.compile(r"(?<=[.?!])\s+")
 
         assert self.breakpoint_threshold_type == "percentile", "only breakpoint_threshold_type 'percentile' is currently supported"
         assert self.buffer_size == 1, "combining sentences is not supported yet"
