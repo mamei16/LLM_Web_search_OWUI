@@ -207,7 +207,7 @@ class Tools:
                         "This limits the number of search engine results to process per query to max. 10.",
         )
         chunk_size: int = Field(
-            default=500, description="Max. chunk size. The maximal size of the individual chunks that each webpage will"
+            default=800, description="Max. chunk size. The maximal size of the individual chunks that each webpage will"
                                      " be split into, in characters", ge=5, le=100000,
         )
         include_citations: bool = Field(
@@ -494,7 +494,7 @@ class DocumentRetriever:
         await emit_status(__event_emitter__, "Loading neural chunking model...", False)
 
         self.token_classification_chunker = await asyncio.to_thread(load_token_classification_chunker,
-                                                       "mirth/chonky_distilbert_base_uncased_1",
+                                                       "mamei16/chonky_distilbert-base-multilingual-cased",
                                                        self.model_cache_dir, self.device, self.chunk_size)
 
 
