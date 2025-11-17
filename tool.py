@@ -494,7 +494,7 @@ class DocumentRetriever:
         await emit_status(__event_emitter__, "Loading neural chunking model...", False)
 
         self.token_classification_chunker = await asyncio.to_thread(load_token_classification_chunker,
-                                                       "mamei16/chonky_distilbert-base-multilingual-cased",
+                                                       "mirth/chonky_distilbert_base_uncased_1",
                                                        self.model_cache_dir, self.device, self.chunk_size)
 
 
