@@ -50,7 +50,7 @@ from sentence_transformers import SentenceTransformer, quantize_embeddings
 from sentence_transformers.util import batch_to_device, truncate_embeddings
 from transformers import AutoTokenizer, AutoModelForMaskedLM, AutoModelForTokenClassification
 try:
-    from ddgs import DDGS
+    from ddgs.ddgs import DDGS
     from ddgs.exceptions import DDGSException as DuckDuckGoSearchException
 except ModuleNotFoundError:
     from duckduckgo_search import DDGS
@@ -112,6 +112,7 @@ class AsyncDDGS(DDGS):
         )
         return result
 
+
 async def aduckduckgo(query: str, max_results=3, timeout=10, proxy=None):
     """Modified version of function from https://github.com/oobabooga/text-generation-webui in modules/web_search.py"""
     try:
@@ -150,6 +151,7 @@ async def aduckduckgo(query: str, max_results=3, timeout=10, proxy=None):
     except Exception as e:
         logger.error(f"Error performing web search: {e}")
         return []
+
 
 async def emit_status(event_emitter, description: str, done: bool):
     if event_emitter:
@@ -203,6 +205,15 @@ class Tools:
             default=True,
             description="Use DuckDuckGo instead of DDGS. "
                         "This limits the number of search engine results to process per query to max. 10.",
+        )
+        search_backends: str = Field(
+            default="auto",
+            description="DDGS backends (comma separated) to use when 'duckduckgo_only' is disabled. Options: "
+                        "bing,brave,duckduckgo,google,mojeek,yahoo,yandex,wikipedia"
+        )
+        search_region: str = Field(
+            default="wt-wt", description="DDGS region code to use when 'duckduckgo_only' is disabled. "
+                                         "(e.g., us-en, uk-en, ru-ru, etc.)"
         )
         chunk_size: int = Field(
             default=800, description="Max. chunk size. The maximal size of the individual chunks that each webpage will"
@@ -435,6 +446,9 @@ class DocumentRetriever:
     client_timeout: int
     searxng_url: str
     splade_batch_size: int
+    duckduckgo_only: bool
+    ddgs_backends: str
+    ddgs_region: str
 
     def __init__(self):
         self.embedding_model = None
@@ -465,6 +479,8 @@ class DocumentRetriever:
         if os.environ.get("no_proxy"):
             self.proxy_except_domains = tuple(os.environ.get("no_proxy").split(','))
         self.duckduckgo_only = settings.duckduckgo_only
+        self.ddgs_backends = settings.search_backends
+        self.ddgs_region = settings.search_region
 
 
     async def aload_models(self, __event_emitter__):
@@ -510,7 +526,8 @@ class DocumentRetriever:
                 results = await aduckduckgo(query, self.num_results, 30, proxy=self.proxy)
             else:
                 results = await ddgs.atext(query, safesearch='moderate', timelimit=None,
-                                           max_results=self.num_results)
+                                           max_results=self.num_results, backend=self.ddgs_backends,
+                                           region=self.ddgs_region)
             for result in results:
                 result_document = Document(page_content=f"Title: {result['title']}\n{result['body']}",
                                            metadata={"source": result["href"]})
