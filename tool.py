@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.7.3
+version: 0.8.0
 
 Copyright (C) 2024 mamei16
 
@@ -34,6 +34,7 @@ import asyncio
 import concurrent.futures
 import logging
 import html
+import functools
 
 from pydantic import BaseModel, Field
 import aiohttp
@@ -50,11 +51,9 @@ from sentence_transformers.util import batch_to_device, truncate_embeddings
 from transformers import AutoTokenizer, AutoModelForMaskedLM, AutoModelForTokenClassification
 try:
     from ddgs import DDGS
-    from ddgs.utils import json_loads
     from ddgs.exceptions import DDGSException as DuckDuckGoSearchException
 except ModuleNotFoundError:
     from duckduckgo_search import DDGS
-    from duckduckgo_search.utils import json_loads
     from duckduckgo_search.exceptions import DuckDuckGoSearchException
 from open_webui.env import BASE_DIR
 try:
@@ -70,9 +69,7 @@ logger = logging.getLogger(__name__)
 class AsyncDDGS(DDGS):
     def __init__(
         self,
-        headers: dict[str, str] | None = None,
         proxy: str | None = None,
-        proxies: dict[str, str] | str | None = None,  # deprecated
         timeout: int | None = 10,
         verify: bool = True,
     ) -> None:
@@ -85,7 +82,7 @@ class AsyncDDGS(DDGS):
             timeout (int, optional): Timeout value for the HTTP client. Defaults to 10.
             verify (bool): SSL verification when making the request. Defaults to True.
         """
-        super().__init__(headers=headers, proxy=proxy, proxies=proxies, timeout=timeout, verify=verify)
+        super().__init__(proxy=proxy, timeout=timeout, verify=verify)
         self._executor = concurrent.futures.ThreadPoolExecutor()
         self._loop = asyncio.get_running_loop()
 
@@ -102,56 +99,57 @@ class AsyncDDGS(DDGS):
 
     async def atext(
             self,
-            keywords: str,
+            query: str,
             region: str = "wt-wt",
             safesearch: str = "moderate",
             timelimit: str | None = None,
-            backend: str = "api",
+            backend: str = "auto",
             max_results: int | None = None,
     ) -> list[dict[str, str]]:
         result = await self._loop.run_in_executor(
-            self._executor, self.text, keywords, region, safesearch, timelimit, backend, max_results
+            self._executor, functools.partial(self.text, query, region=region, safesearch=safesearch,
+                                              timelimit=timelimit, backend=backend, max_results=max_results)
         )
         return result
 
-    async def aduckduckgo(self, query: str, max_results=3, timeout=10):
-        """Modified version of function from https://github.com/oobabooga/text-generation-webui in modules/web_search.py"""
-        try:
-            # Use DuckDuckGo HTML search endpoint
-            search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+async def aduckduckgo(query: str, max_results=3, timeout=10, proxy=None):
+    """Modified version of function from https://github.com/oobabooga/text-generation-webui in modules/web_search.py"""
+    try:
+        # Use DuckDuckGo HTML search endpoint
+        search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-            async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(timeout),
-                                             max_field_size=65536, proxy=self.proxy) as session:
-                try:
-                    response = await session.get(search_url)
-                    response.raise_for_status()
-                    response_text = await response.text()
-                except TimeoutError:
-                    logger.warning('LLM_Web_search | %r did not load in time' % search_url)
-                except Exception as exc:
-                    logger.error('LLM_Web_search | %r generated an exception: %s' % (search_url, exc))
+        async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(timeout),
+                                         max_field_size=65536, proxy=proxy) as session:
+            try:
+                response = await session.get(search_url)
+                response.raise_for_status()
+                response_text = await response.text()
+            except TimeoutError:
+                logger.warning('LLM_Web_search | %r did not load in time' % search_url)
+            except Exception as exc:
+                logger.error('LLM_Web_search | %r generated an exception: %s' % (search_url, exc))
 
-            if regex.search("anomaly-modal__mask", response_text, regex.DOTALL):
-                raise ValueError("Web search failed due to CAPTCHA")
+        if regex.search("anomaly-modal__mask", response_text, regex.DOTALL):
+            raise ValueError("Web search failed due to CAPTCHA")
 
-            # Extract results with regex
-            titles = regex.findall(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)</a>', response_text, regex.DOTALL)
-            urls = regex.findall(r'<a[^>]*class="[^"]*result__url[^"]*"[^>]*>(.*?)</a>', response_text, regex.DOTALL)
-            snippets = regex.findall(r'<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>', response_text, regex.DOTALL)
+        # Extract results with regex
+        titles = regex.findall(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)</a>', response_text, regex.DOTALL)
+        urls = regex.findall(r'<a[^>]*class="[^"]*result__url[^"]*"[^>]*>(.*?)</a>', response_text, regex.DOTALL)
+        snippets = regex.findall(r'<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>', response_text, regex.DOTALL)
 
-            result_dicts = []
-            for i in range(min(len(titles), len(urls), len(snippets), max_results)):
-                url = f"https://{urls[i].strip()}"
-                title = regex.sub(r'<[^>]+>', '', titles[i]).strip()
-                title = html.unescape(title)
-                snippet = html.unescape(snippets[i]).replace("<b>", "").replace("</b>", "")
-                result_dicts.append({"href": url, "title": title, "body": snippet})
-            return result_dicts
+        result_dicts = []
+        for i in range(min(len(titles), len(urls), len(snippets), max_results)):
+            url = f"https://{urls[i].strip()}"
+            title = regex.sub(r'<[^>]+>', '', titles[i]).strip()
+            title = html.unescape(title)
+            snippet = html.unescape(snippets[i]).replace("<b>", "").replace("</b>", "")
+            result_dicts.append({"href": url, "title": title, "body": snippet})
+        return result_dicts
 
-        except Exception as e:
-            logger.error(f"Error performing web search: {e}")
-            return []
+    except Exception as e:
+        logger.error(f"Error performing web search: {e}")
+        return []
 
 async def emit_status(event_emitter, description: str, done: bool):
     if event_emitter:
@@ -389,7 +387,7 @@ def katex_escape_str(string: str) -> str:
 
 def load_splade_model(repo_id: str, cache_dir: str, device: str):
     kwargs = {"cache_dir": cache_dir, "torch_dtype": torch.float32 if device == "cpu" else torch.float16,
-              "attn_implementation": "eager"}
+              "attn_implementation": "eager", "revision": "refs/pr/1"}
     try:
         return AutoTokenizer.from_pretrained(
             repo_id, cache_dir=cache_dir
@@ -509,7 +507,7 @@ class DocumentRetriever:
             result_documents = []
             result_urls = []
             if self.duckduckgo_only:
-                results = await ddgs.aduckduckgo(query, self.num_results, 30)
+                results = await aduckduckgo(query, self.num_results, 30, proxy=self.proxy)
             else:
                 results = await ddgs.atext(query, safesearch='moderate', timelimit=None,
                                            max_results=self.num_results)
