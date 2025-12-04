@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.8.0
+version: 0.8.1
 
 Copyright (C) 2024 mamei16
 
