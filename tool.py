@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.8.1
+version: 0.8.2
 
 Copyright (C) 2024 mamei16
 
@@ -1247,6 +1247,12 @@ class TokenClassificationChunker(TextSplitter):
 
 
 class MySentenceTransformer(SentenceTransformer):
+    def __init__(self, *args, **kwargs):
+        # Hacky fix for model not being detected as SentenceTransformer due to class name mismatch
+        self.__class__.__name__ = SentenceTransformer.__name__
+        super().__init__(*args, **kwargs)
+        self.__class__.__name__ = self.__class__.__qualname__
+
     def batch_encode(
             self,
             sentences: str | list[str],
