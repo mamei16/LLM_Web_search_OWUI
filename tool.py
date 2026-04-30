@@ -1,6 +1,6 @@
 """
 LLM Web Search
-version: 0.8.2
+version: 0.8.3
 
 Copyright (C) 2024 mamei16
 
@@ -1329,7 +1329,7 @@ class MySentenceTransformer(SentenceTransformer):
         batch_indices = []
         for index_batch in batchifyer:
             batch_indices.append(index_batch)
-            sentences_batch = sentences[index_batch]
+            sentences_batch = sentences[index_batch].tolist()
             features = self.tokenize(sentences_batch)
             if self.device.type == "hpu":
                 if "input_ids" in features:
